@@ -1,10 +1,10 @@
-FROM python:3.8-buster
+FROM python:3.9-slim
 
 COPY requirements.txt requirements.txt
 
-RUN apt-get update \
-    && apt-get install -y pandoc calibre \
-    && pip3 install -r requirements.txt
+RUN apt-get update 
+RUN apt-get install -y pandoc calibre 
+RUN pip3 install -r requirements.txt
 
 COPY src/ src/
 COPY config/ config/

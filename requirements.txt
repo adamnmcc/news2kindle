@@ -1,3 +1,6 @@
-pytz==2019.3
-pypandoc==1.4
-feedparser==5.2.1
+pytz==2022.1
+pypandoc==1.8.1
+feedparser==6.0.10
+requests
+bs4
+lxml

@@ -4,6 +4,9 @@ from datetime import datetime, timedelta
 import collections
 import threading
 import feedparser
+import json
+import requests 
+from bs4 import BeautifulSoup as bsoup
 
 
 Post = collections.namedtuple('Post', [
@@ -46,6 +49,12 @@ class FeedparserThread(threading.Thread):
         self.myposts.sort()
         self.posts += self.myposts
 
+def process_article(link: str):
+    html = requests.get(link).text
+    soup = bsoup(html, 'lxml')
+    res = soup.find_all('div', class_='markdown-editor')
+    return res
+
 
 def process_entry(entry, blog, START):
     """
@@ -54,20 +63,18 @@ def process_entry(entry, blog, START):
 
     If it was published before START date, drop the entry.
     """
-    try:
-        when = entry['updated_parsed']
-    except KeyError:
-        try:
-            when = entry['published_parsed']
-        except KeyError:
-            return  # Ignore undateable posts
+    if entry.get('updated_parsed'):
+        when = entry.get('updated_parsed')
+    elif entry.get('published_parsed'):
+        when = entry.get('published_parsed')
+    else:
+        print('undated article.')
+        return
 
     if when:
         when = pytz.utc.localize(datetime.fromtimestamp(time.mktime(when)))
     else:
-        # print blog, entry
         return
-
     if when < START:
         return
 
@@ -84,7 +91,10 @@ def process_entry(entry, blog, START):
     link = entry['link']
 
     try:
-        body = entry['content'][0]['value']
+        if 'hackernoon.com' in link:
+            body = process_article(link)
+        else:
+            body = entry['content'][0]['value']
     except KeyError:
         body = entry['summary']
 

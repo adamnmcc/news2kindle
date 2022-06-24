@@ -31,13 +31,14 @@ KINDLE_EMAIL = os.getenv("KINDLE_EMAIL")
 PANDOC = os.getenv("PANDOC_PATH", "/usr/bin/pandoc")
 PERIOD = int(os.getenv("UPDATE_PERIOD", 12))  # hours between RSS pulls
 
-CONFIG_PATH = '/config'
+CONFIG_PATH = './config'
 FEED_FILE = os.path.join(CONFIG_PATH, 'feeds.txt')
 COVER_FILE = os.path.join(CONFIG_PATH, 'cover.png')
 
 
 feed_file = os.path.expanduser(FEED_FILE)
 
+FIRST_RUN = True
 
 def load_feeds():
     """Return a list of the feeds for download.
@@ -72,6 +73,7 @@ def get_posts_list(feed_list, START):
     posts = []
     ths = []
     for url in feed_list:
+        print(f'parsing {url}')
         th = FeedparserThread(url, START, posts)
         ths.append(th)
         th.start()
@@ -97,22 +99,21 @@ def nicepost(post):
     thispost['nicetime'] = nicehour(thispost['time'])
     return thispost
 
+def html_head(date: str):
+    return f"""<html>
+                <meta charset="UTF-8" />
+                <meta name="viewport" content="width=device-width" />
+                <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-# <link rel="stylesheet" type="text/css" href="style.css">
-html_head = u"""<html>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width" />
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <meta name="apple-mobile-web-app-capable" content="yes" />
+                <style>
+                </style>
+                <title>THE DAILY NEWS - {date}</title>
+                </head>
+                <body>
 
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-<style>
-</style>
-<title>THE DAILY NEWS</title>
-</head>
-<body>
-
-"""
+                """
 
 html_tail = u"""
 </body>
@@ -129,8 +130,6 @@ html_perpost = u"""
 
 
 def send_mail(send_from, send_to, subject, text, files):
-    # assert isinstance(send_to, list)
-
     msg = MIMEMultipart()
     msg['From'] = send_from
     msg['To'] = COMMASPACE.join(send_to)
@@ -158,13 +157,22 @@ def convert_to_mobi(input_file, output_file):
 
 
 def do_one_round():
+    global FIRST_RUN
     # get all posts from starting point to now
     now = pytz.utc.localize(datetime.now())
-    start = get_start(feed_file)
+    if FIRST_RUN:
+        start = pytz.utc.localize(datetime.now() - timedelta(hours = 24))
+        print(f'First Run, starting from {start}')
+        FIRST_RUN = False
+    else:
+        start = get_start(feed_file)
+        print(f'Starting from {start}')
 
     logging.info(f"Collecting posts since {start}")
-
-    posts = get_posts_list(load_feeds(), start)
+    
+    feed_list = load_feeds()
+    print(f'feed_list: {feed_list}')
+    posts = get_posts_list(feed_list, start)
     posts.sort()
 
     logging.info(f"Downloaded {len(posts)} posts")
@@ -172,7 +180,7 @@ def do_one_round():
     if posts:
         logging.info("Compiling newspaper")
 
-        result = html_head + \
+        result = html_head(nicedate(start)) + \
             u"\n".join([html_perpost.format(**nicepost(post))
                         for post in posts]) + html_tail
 
@@ -189,17 +197,15 @@ def do_one_round():
                               extra_args=["--standalone",
                                           f"--epub-cover-image={COVER_FILE}",
                                           ])
-        convert_to_mobi(epubFile, mobiFile)
 
         logging.info("Sending to kindle email")
         send_mail(send_from=EMAIL_FROM,
                   send_to=[KINDLE_EMAIL],
                   subject="Daily News",
                   text="This is your daily news.\n\n--\n\n",
-                  files=[mobiFile])
+                  files=[epubFile])
         logging.info("Cleaning up...")
         os.remove(epubFile)
-        os.remove(mobiFile)
 
     logging.info("Finished.")
     update_start(now)
